@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JudiciaLens — Gender Bias Analyser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#1a1a18;--ink-soft:#4a4a46;--ink-muted:#8a8a84;
+  --paper:#f7f4ee;--paper-warm:#efe9de;--rule:#d4cfc4;
+  --accent:#8b3a3a;--accent-light:#f0e4e4;
+  --counter:#2a4a6b;--counter-light:#e4edf5;
+  --gold:#b8860b;--gold-light:#faf3e0;
+  --green:#2a6b2a;--green-light:#f0f7f0;
+  --serif:'Playfair Display',Georgia,serif;
+  --sans:'DM Sans',system-ui,sans-serif;
+}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);min-height:100vh;font-size:15px;line-height:1.6}
+
+/* NAV */
+header{border-bottom:1px solid var(--rule);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;background:var(--paper);position:sticky;top:0;z-index:100}
+header h1{font-family:var(--serif);font-size:1.7rem;font-weight:600;letter-spacing:-0.02em}
+header h1 span{color:var(--accent);font-style:italic}
+.nav-tabs{display:flex;gap:0.25rem}
+.nav-tab{padding:0.5rem 1.1rem;font-family:var(--sans);font-size:13px;font-weight:500;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--ink-soft);background:none;transition:all 0.15s}
+.nav-tab:hover{background:var(--paper-warm)}
+.nav-tab.active{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* PAGES */
+.page{display:none;min-height:calc(100vh - 57px)}
+.page.active{display:block}
+
+/* ANALYSE PAGE */
+.analyse-layout{display:grid;grid-template-columns:1fr 1fr;min-height:calc(100vh - 57px)}
+.input-panel{border-right:1px solid var(--rule);padding:1.75rem 2rem;display:flex;flex-direction:column;gap:1.1rem;overflow-y:auto}
+.results-panel{padding:1.75rem 2rem;display:flex;flex-direction:column;gap:1.5rem;background:white;overflow-y:auto}
+
+/* METADATA */
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.6rem}
+.meta-input{display:flex;flex-direction:column;gap:0.3rem}
+.meta-input label{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);font-weight:500}
+.meta-input input,.meta-input select{padding:0.5rem 0.75rem;font-family:var(--sans);font-size:13px;border:1px solid var(--rule);border-radius:3px;background:white;color:var(--ink);outline:none}
+.meta-input input:focus,.meta-input select:focus{border-color:var(--ink-soft)}
+
+/* INPUT TABS */
+.input-tabs{display:flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:white}
+.tab-btn{flex:1;padding:0.55rem 1rem;font-family:var(--sans);font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;color:var(--ink-muted);transition:all 0.15s}
+.tab-btn.active{background:var(--ink);color:var(--paper)}
+.tab-btn:not(.active):hover{background:var(--paper-warm);color:var(--ink-soft)}
+.tab-content{display:none;flex-direction:column;gap:0.75rem}
+.tab-content.active{display:flex}
+
+/* PDF */
+.pdf-drop-zone{border:1.5px dashed var(--rule);border-radius:6px;padding:2rem 1.5rem;text-align:center;background:white;cursor:pointer;transition:all 0.2s;position:relative}
+.pdf-drop-zone:hover,.pdf-drop-zone.drag-over{border-color:var(--accent);background:var(--accent-light)}
+.pdf-drop-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.pdf-drop-zone .drop-icon{font-size:1.75rem;margin-bottom:0.5rem;display:block}
+.pdf-drop-zone p{font-size:13px;color:var(--ink-soft);margin-bottom:0.2rem}
+.pdf-drop-zone small{font-size:11px;color:var(--ink-muted)}
+.pdf-loaded{background:var(--green-light);border:1.5px solid #a8d4a8;border-radius:6px;padding:0.85rem 1rem;display:flex;align-items:center;gap:0.75rem}
+.pdf-loaded .pdf-icon{width:32px;height:32px;background:var(--green);border-radius:3px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:600;flex-shrink:0}
+.pdf-loaded .pdf-info{flex:1;min-width:0}
+.pdf-loaded .pdf-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdf-loaded .pdf-meta{font-size:11px;color:var(--green);margin-top:2px}
+.btn-remove-pdf{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:16px;padding:4px;flex-shrink:0}
+.pdf-extracting{background:var(--gold-light);border:1px solid #e8d4a0;border-radius:6px;padding:0.85rem 1rem;font-size:13px;color:var(--ink-soft);display:flex;align-items:center;gap:0.75rem}
+.spinner{width:14px;height:14px;border:2px solid var(--rule);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TEXTAREA */
+textarea{width:100%;min-height:220px;padding:1rem;font-family:var(--sans);font-size:13px;line-height:1.7;color:var(--ink);background:white;border:1px solid var(--rule);border-radius:4px;resize:vertical;outline:none;transition:border-color 0.2s}
+textarea:focus{border-color:var(--ink-soft)}
+textarea::placeholder{color:var(--ink-muted);font-style:italic}
+.word-count{font-size:11px;color:var(--ink-muted);text-align:right}
+.word-count.good{color:var(--green)}
+.word-count.warn{color:var(--gold)}
+
+/* EXAMPLES */
+.examples{display:flex;gap:0.5rem;flex-wrap:wrap}
+.example-chip{font-size:11px;padding:0.3rem 0.75rem;border:1px solid var(--rule);border-radius:20px;cursor:pointer;color:var(--ink-soft);background:white;transition:all 0.2s;font-family:var(--sans)}
+.example-chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+
+/* BUTTONS */
+.controls{display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap}
+.btn-primary{background:var(--ink);color:var(--paper);border:none;padding:0.65rem 1.75rem;font-family:var(--sans);font-size:13px;font-weight:500;letter-spacing:0.04em;cursor:pointer;border-radius:2px;transition:background 0.2s}
+.btn-primary:hover{background:var(--accent)}
+.btn-primary:disabled{background:var(--ink-muted);cursor:not-allowed}
+.btn-secondary{background:none;border:1px solid var(--rule);color:var(--ink-soft);padding:0.65rem 1.1rem;font-family:var(--sans);font-size:13px;cursor:pointer;border-radius:2px;transition:border-color 0.2s}
+.btn-secondary:hover{border-color:var(--ink-soft)}
+.btn-save-log{background:var(--green);color:white;border:none;padding:0.65rem 1.1rem;font-family:var(--sans);font-size:13px;cursor:pointer;border-radius:2px}
+
+/* NOTICES */
+.api-key-notice{background:var(--gold-light);border:1px solid #e8d4a0;border-radius:4px;padding:0.85rem 1rem;font-size:13px;color:var(--ink-soft);line-height:1.55}
+.api-key-notice strong{color:var(--ink);font-weight:500}
+.api-key-input{display:flex;gap:0.5rem;margin-top:0.6rem}
+.api-key-input input{flex:1;padding:0.5rem 0.75rem;font-family:var(--sans);font-size:13px;border:1px solid var(--rule);border-radius:2px;background:white;outline:none;color:var(--ink)}
+.btn-save-key{background:var(--ink);color:var(--paper);border:none;padding:0.5rem 0.9rem;font-family:var(--sans);font-size:13px;cursor:pointer;border-radius:2px}
+.panel-label{font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);font-weight:500}
+.error-msg{background:#fef0f0;border:1px solid #f5c6c6;border-radius:4px;padding:0.85rem 1rem;font-size:13px;color:#8b2020}
+.hidden{display:none!important}
+
+/* RESULTS */
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;color:var(--ink-muted);text-align:center;padding:3rem 1rem}
+.empty-state .icon{width:44px;height:44px;border:1px solid var(--rule);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px}
+.empty-state p{font-size:13px;max-width:240px;line-height:1.6}
+.loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.25rem}
+.loading-dots{display:flex;gap:6px}
+.loading-dots span{width:7px;height:7px;border-radius:50%;background:var(--ink-muted);animation:pulse 1.2s ease-in-out infinite}
+.loading-dots span:nth-child(2){animation-delay:0.2s}
+.loading-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes pulse{0%,80%,100%{opacity:0.3;transform:scale(0.9)}40%{opacity:1;transform:scale(1)}}
+.loading p{font-size:13px;color:var(--ink-muted);font-style:italic}
+
+/* SCORE */
+.score-section{display:flex;gap:1.25rem;align-items:center;padding-bottom:1.25rem;border-bottom:1px solid var(--rule)}
+.score-circle{position:relative;width:84px;height:84px;flex-shrink:0}
+.score-circle svg{transform:rotate(-90deg)}
+.score-number{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--serif);font-size:1.5rem;font-weight:600;line-height:1}
+.score-number small{font-family:var(--sans);font-size:10px;font-weight:400;color:var(--ink-muted);letter-spacing:0.05em;text-transform:uppercase;margin-top:2px;font-style:normal}
+.score-meta h3{font-family:var(--serif);font-size:1rem;font-weight:600;margin-bottom:0.3rem}
+.score-meta p{font-size:13px;color:var(--ink-soft);line-height:1.5}
+
+/* METRICS */
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem}
+.metric-card{background:var(--paper);border:1px solid var(--rule);border-radius:4px;padding:0.85rem 1rem}
+.metric-card .metric-label{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);margin-bottom:0.3rem}
+.metric-card .metric-value{font-family:var(--serif);font-size:1.4rem;font-weight:600;line-height:1}
+.metric-card .metric-sub{font-size:11px;color:var(--ink-muted);margin-top:0.2rem}
+.metric-card.male .metric-value{color:var(--counter)}
+.metric-card.female .metric-value{color:var(--accent)}
+.metric-card.neutral .metric-value{color:var(--gold)}
+.metric-card.patterns .metric-value{color:var(--ink-soft)}
+.section-title{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-muted);margin-bottom:0.75rem;font-weight:500}
+.chart-wrap{height:150px;position:relative}
+
+/* FINDINGS */
+.result-tabs{display:flex;gap:0.25rem;border-bottom:1px solid var(--rule);margin-bottom:1rem}
+.result-tab{padding:0.5rem 1rem;font-family:var(--sans);font-size:12px;font-weight:500;border:none;background:none;cursor:pointer;color:var(--ink-muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.15s}
+.result-tab.active{color:var(--ink);border-bottom-color:var(--ink)}
+.result-pane{display:none}
+.result-pane.active{display:block}
+
+.finding-item{padding:0.9rem 0;border-bottom:1px solid var(--paper-warm)}
+.finding-item:last-child{border-bottom:none}
+.finding-headline{font-size:13px;font-weight:500;color:var(--ink);line-height:1.4}
+.finding-quote{font-family:var(--serif);font-size:12.5px;color:var(--accent);font-style:italic;background:var(--accent-light);border-left:3px solid var(--accent);padding:0.5rem 0.85rem;margin:0.5rem 0;border-radius:0 3px 3px 0;line-height:1.55}
+.finding-text{font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin-top:0.35rem}
+.finding-tag{font-size:10px;padding:0.2rem 0.55rem;border-radius:2px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.tag-naming{background:#e8e0f5;color:#5a3a8b}
+.tag-agency{background:var(--counter-light);color:var(--counter)}
+.tag-credibility{background:#fde8d8;color:#8b4a1a}
+.tag-emotional{background:var(--accent-light);color:var(--accent)}
+.tag-biographical{background:var(--gold-light);color:var(--gold)}
+.tag-titles{background:#e0f0e0;color:var(--green)}
+.tag-pattern{background:#f0f0ee;color:var(--ink-soft)}
+.tag-masculine{background:var(--counter-light);color:var(--counter)}
+.tag-feminine{background:var(--accent-light);color:var(--accent)}
+.tag-neutral{background:var(--gold-light);color:var(--gold)}
+
+/* HIGHLIGHTED TEXT */
+.highlight-wrap{background:white;border:1px solid var(--rule);border-radius:4px;padding:1.25rem;font-size:13px;line-height:1.8;max-height:400px;overflow-y:auto}
+.hl-male{background:#d4e3f0;border-radius:2px;padding:0 2px}
+.hl-female{background:#f0dede;border-radius:2px;padding:0 2px}
+.hl-pattern{background:#faf3e0;border-radius:2px;padding:0 2px}
+.highlight-legend{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem}
+.hl-key{font-size:11px;display:flex;align-items:center;gap:0.4rem;color:var(--ink-soft)}
+.hl-swatch{width:14px;height:14px;border-radius:2px}
+
+/* SAVE TO LOG */
+.save-notice{background:var(--green-light);border:1px solid #a8d4a8;border-radius:4px;padding:0.85rem 1rem;font-size:13px;color:var(--ink-soft);display:flex;align-items:center;justify-content:space-between;gap:1rem}
+
+/* COMPARISON PAGE */
+.compare-layout{display:grid;grid-template-columns:1fr 1fr;gap:0;min-height:calc(100vh - 57px)}
+.compare-panel{padding:1.75rem 2rem;border-right:1px solid var(--rule);display:flex;flex-direction:column;gap:1rem}
+.compare-panel:last-child{border-right:none;background:white}
+.compare-result{flex:1}
+
+/* LOG PAGE */
+.log-page{padding:2rem 3rem;max-width:1100px;margin:0 auto}
+.log-page h2{font-family:var(--serif);font-size:1.6rem;font-weight:400;margin-bottom:0.5rem}
+.log-page .subtitle{font-size:13px;color:var(--ink-muted);margin-bottom:2rem}
+.log-empty{text-align:center;padding:4rem;color:var(--ink-muted)}
+.log-table{width:100%;border-collapse:collapse;font-size:13px}
+.log-table th{text-align:left;padding:0.6rem 1rem;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);border-bottom:1px solid var(--rule);font-weight:500}
+.log-table td{padding:0.85rem 1rem;border-bottom:1px solid var(--paper-warm);vertical-align:top}
+.log-table tr:hover td{background:var(--paper)}
+.score-pill{display:inline-block;padding:0.2rem 0.6rem;border-radius:12px;font-size:12px;font-weight:500}
+.score-high{background:#fde8d8;color:#8b4a1a}
+.score-mid{background:var(--gold-light);color:var(--gold)}
+.score-low{background:var(--green-light);color:var(--green)}
+.btn-delete{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:12px;padding:0.2rem 0.5rem;border-radius:2px}
+.btn-delete:hover{background:#fde8d8;color:var(--accent)}
+
+/* TIMELINE */
+.timeline-section{margin-top:2.5rem}
+.timeline-section h3{font-family:var(--serif);font-size:1.2rem;font-weight:400;margin-bottom:1rem}
+.timeline-chart-wrap{background:white;border:1px solid var(--rule);border-radius:4px;padding:1.5rem;height:280px;position:relative}
+
+@media(max-width:900px){
+  .analyse-layout,.compare-layout{grid-template-columns:1fr}
+  .input-panel{border-right:none;border-bottom:1px solid var(--rule)}
+  header{padding:1rem 1.25rem}
+  .log-page{padding:1.5rem}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Judicia<span>Lens</span></h1>
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('analyse')">Analyse</button>
+    <button class="nav-tab" onclick="showPage('compare')">Compare</button>
+    <button class="nav-tab" onclick="showPage('log')">Research log</button>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     PAGE 1: ANALYSE
+════════════════════════════════════════════ -->
+<div class="page active" id="page-analyse">
+<div class="analyse-layout">
+
+  <div class="input-panel">
+    <div id="api-key-section" class="api-key-notice">
+      <strong>API key required.</strong> Enter your Anthropic API key — stored only in browser memory.
+      <div class="api-key-input">
+        <input type="password" id="api-key-input" placeholder="sk-ant-..." />
+        <button class="btn-save-key" onclick="saveKey()">Save</button>
+      </div>
+    </div>
+
+    <div>
+      <p class="panel-label" style="margin-bottom:0.6rem">Case details</p>
+      <div class="meta-grid">
+        <div class="meta-input" style="grid-column:1/-1">
+          <label>Case name</label>
+          <input type="text" id="meta-name" placeholder="e.g. Smith v Jones Enterprises Ltd" />
+        </div>
+        <div class="meta-input">
+          <label>Year</label>
+          <input type="number" id="meta-year" placeholder="2024" min="1950" max="2030" />
+        </div>
+        <div class="meta-input">
+          <label>Case type</label>
+          <select id="meta-type">
+            <option value="">Select type</option>
+            <option>Sex discrimination</option>
+            <option>Unfair dismissal</option>
+            <option>Maternity / pregnancy</option>
+            <option>Equal pay</option>
+            <option>Harassment</option>
+            <option>Family court</option>
+            <option>Commercial dispute</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-tabs">
+      <button class="tab-btn active" onclick="switchInputTab('pdf')">📄 Upload PDF</button>
+      <button class="tab-btn" onclick="switchInputTab('text')">✎ Paste text</button>
+    </div>
+
+    <div class="tab-content active" id="tab-pdf">
+      <div id="drop-zone" class="pdf-drop-zone">
+        <input type="file" id="pdf-file-input" accept=".pdf" onchange="handlePdfUpload(event,'main')" />
+        <span class="drop-icon">📄</span>
+        <p>Drop a PDF judgment here</p>
+        <small>or click to browse</small>
+      </div>
+      <div id="pdf-extracting" class="pdf-extracting hidden">
+        <div class="spinner"></div><span>Extracting text from PDF…</span>
+      </div>
+      <div id="pdf-loaded" class="pdf-loaded hidden">
+        <div class="pdf-icon">PDF</div>
+        <div class="pdf-info">
+          <div class="pdf-name" id="pdf-filename">—</div>
+          <div class="pdf-meta" id="pdf-wordcount">—</div>
+        </div>
+        <button class="btn-remove-pdf" onclick="removePdf('main')">✕</button>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-text">
+      <textarea id="judgment-text" placeholder="Paste judgment text here. At least 500 words recommended."></textarea>
+      <div class="word-count" id="word-count">0 words</div>
+      <div>
+        <p class="panel-label" style="margin-bottom:0.5rem">Examples</p>
+        <div class="examples">
+          <span class="example-chip" onclick="loadExample('employment')">Employment tribunal</span>
+          <span class="example-chip" onclick="loadExample('family')">Family court</span>
+          <span class="example-chip" onclick="loadExample('commercial')">Commercial</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="analyse-btn" onclick="runAnalysis('main')">Analyse judgment</button>
+      <button class="btn-secondary" onclick="clearMain()">Clear</button>
+    </div>
+  </div>
+
+  <div class="results-panel" id="main-results-panel">
+    <div class="empty-state" id="main-empty">
+      <div class="icon">⚖</div>
+      <p>Upload a PDF or paste a judgment, then click Analyse.</p>
+    </div>
+    <div class="loading hidden" id="main-loading">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <p>Analysing language patterns…</p>
+    </div>
+    <div id="main-error" class="error-msg hidden"></div>
+    <div id="main-results" class="hidden">
+      <div id="main-results-inner"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PAGE 2: COMPARE
+════════════════════════════════════════════ -->
+<div class="page" id="page-compare">
+<div class="compare-layout">
+
+  <div class="compare-panel">
+    <p class="panel-label">Judgment A — earlier case</p>
+    <div class="meta-grid">
+      <div class="meta-input">
+        <label>Case name</label>
+        <input type="text" id="cmp-name-a" placeholder="Case name" />
+      </div>
+      <div class="meta-input">
+        <label>Year</label>
+        <input type="number" id="cmp-year-a" placeholder="2005" />
+      </div>
+    </div>
+    <div id="drop-zone-a" class="pdf-drop-zone">
+      <input type="file" accept=".pdf" onchange="handlePdfUpload(event,'a')" />
+      <span class="drop-icon">📄</span>
+      <p>Upload PDF or</p>
+      <small>paste text below</small>
+    </div>
+    <div id="pdf-extracting-a" class="pdf-extracting hidden"><div class="spinner"></div><span>Extracting…</span></div>
+    <div id="pdf-loaded-a" class="pdf-loaded hidden">
+      <div class="pdf-icon">PDF</div>
+      <div class="pdf-info"><div class="pdf-name" id="pdf-filename-a">—</div><div class="pdf-meta" id="pdf-wordcount-a">—</div></div>
+      <button class="btn-remove-pdf" onclick="removePdf('a')">✕</button>
+    </div>
+    <textarea id="cmp-text-a" placeholder="Or paste judgment A text here…" style="min-height:160px"></textarea>
+    <div class="compare-result" id="cmp-result-a">
+      <div class="empty-state"><div class="icon">A</div><p>Judgment A results will appear here</p></div>
+    </div>
+  </div>
+
+  <div class="compare-panel">
+    <p class="panel-label">Judgment B — later case</p>
+    <div class="meta-grid">
+      <div class="meta-input">
+        <label>Case name</label>
+        <input type="text" id="cmp-name-b" placeholder="Case name" />
+      </div>
+      <div class="meta-input">
+        <label>Year</label>
+        <input type="number" id="cmp-year-b" placeholder="2024" />
+      </div>
+    </div>
+    <div id="drop-zone-b" class="pdf-drop-zone">
+      <input type="file" accept=".pdf" onchange="handlePdfUpload(event,'b')" />
+      <span class="drop-icon">📄</span>
+      <p>Upload PDF or</p>
+      <small>paste text below</small>
+    </div>
+    <div id="pdf-extracting-b" class="pdf-extracting hidden"><div class="spinner"></div><span>Extracting…</span></div>
+    <div id="pdf-loaded-b" class="pdf-loaded hidden">
+      <div class="pdf-icon">PDF</div>
+      <div class="pdf-info"><div class="pdf-name" id="pdf-filename-b">—</div><div class="pdf-meta" id="pdf-wordcount-b">—</div></div>
+      <button class="btn-remove-pdf" onclick="removePdf('b')">✕</button>
+    </div>
+    <textarea id="cmp-text-b" placeholder="Or paste judgment B text here…" style="min-height:160px"></textarea>
+    <div class="compare-result" id="cmp-result-b">
+      <div class="empty-state"><div class="icon">B</div><p>Judgment B results will appear here</p></div>
+    </div>
+  </div>
+
+</div>
+<div style="padding:1rem 2rem;border-top:1px solid var(--rule);background:var(--paper);display:flex;gap:0.75rem;align-items:center">
+  <button class="btn-primary" id="compare-btn" onclick="runComparison()">Compare both judgments</button>
+  <span id="compare-status" style="font-size:13px;color:var(--ink-muted)"></span>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PAGE 3: RESEARCH LOG
+════════════════════════════════════════════ -->
+<div class="page" id="page-log">
+<div class="log-page">
+  <h2>Research log</h2>
+  <p class="subtitle">Cases you have analysed — building your dataset for findings and conclusions.</p>
+  <div id="log-content"></div>
+  <div class="timeline-section">
+    <h3>Bias score over time</h3>
+    <div class="timeline-chart-wrap">
+      <canvas id="timeline-chart"></canvas>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let apiKey='';
+let extractedTexts={main:'',a:'',b:''};
+let lastResult=null;
+let researchLog=JSON.parse(localStorage.getItem('judiciallens-log')||'[]');
+let chartInstances={};
+
+const EXAMPLES={
+  employment:`The claimant, Mrs Sarah Thompson, brought proceedings against her employer, Meridian Financial Services Ltd, following her dismissal in March 2022. The respondent company, represented by its managing director Mr James Hartley and HR director Mr David Collins, denied the allegations of unfair dismissal and sex discrimination. Mrs Thompson had been employed as a senior analyst for seven years and was the only woman on the senior management team. The tribunal heard evidence that following her return from maternity leave, she was excluded from key meetings attended by her male colleagues. Mr Hartley gave evidence that the exclusion was operational rather than discriminatory, a claim disputed by Mrs Thompson and her witness, Ms Claire Webb, a former colleague. The tribunal considered the provisions of the Equality Act 2010 and found that the burden of proof had shifted to the respondent. Mr Collins' evidence was found to be inconsistent in material respects. The claimant's evidence was preferred. The tribunal found that Mrs Thompson had been subjected to indirect sex discrimination and that her dismissal was unfair.`,
+  family:`This matter concerns the welfare of two children, A (aged 7) and B (aged 5), the children of the applicant mother and the respondent father. The mother applies for a child arrangements order. The father opposes the application and cross-applies for the children to live with him. The court heard from the CAFCASS officer, who expressed concern about the father's controlling behaviour during the relationship. The mother gave evidence that she had been the primary carer throughout the children's lives. The father gave evidence that he was an active parent who attended school events and medical appointments. His Honour Judge Richardson found that the children's primary attachment was to their mother. The father's evidence about his involvement was found to be exaggerated. The court made a child arrangements order providing for the children to live with the mother and to spend time with the father on alternate weekends.`,
+  commercial:`This appeal concerns a dispute between Blackstone Capital Partners LLP, the appellant, and Meridian Holdings plc, the respondent. The parties are represented by leading counsel: Mr Thomas Aldridge KC for the appellant and Miss Katherine Brennan KC for the respondent. The judgment of Mr Justice Hammond in the Commercial Court is appealed on two grounds. First, the appellant contends that the judge erred in his construction of clause 8.4 of the agreement. Lord Justice Pemberton, giving the leading judgment, dismissed both grounds of appeal. Lady Justice Okafor agreed with Lord Justice Pemberton's analysis on both grounds and added observations on the admissibility of expert evidence.`
+};
+
+function showPage(p){
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.querySelectorAll('.nav-tab')[['analyse','compare','log'].indexOf(p)].classList.add('active');
+  if(p==='log') renderLog();
+}
+
+function saveKey(){
+  const input=document.getElementById('api-key-input');
+  if(input.value.trim().startsWith('sk-ant-')){
+    apiKey=input.value.trim();
+    document.getElementById('api-key-section').style.display='none';
+  } else {
+    input.style.borderColor='#e24b4a';
+    setTimeout(()=>input.style.borderColor='',1500);
+  }
+}
+
+function switchInputTab(tab){
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===(tab==='pdf'?0:1)));
+  document.getElementById('tab-pdf').classList.toggle('active',tab==='pdf');
+  document.getElementById('tab-text').classList.toggle('active',tab==='text');
+}
+
+async function handlePdfUpload(event,slot){
+  const file=event.target.files[0];
+  if(!file)return;
+  const ids={main:['drop-zone','pdf-extracting','pdf-loaded','pdf-filename','pdf-wordcount'],a:['drop-zone-a','pdf-extracting-a','pdf-loaded-a','pdf-filename-a','pdf-wordcount-a'],b:['drop-zone-b','pdf-extracting-b','pdf-loaded-b','pdf-filename-b','pdf-wordcount-b']};
+  const[dz,ex,ld,fn,wc]=ids[slot].map(id=>document.getElementById(id));
+  dz.classList.add('hidden');ld.classList.add('hidden');ex.classList.remove('hidden');
+  try{
+    const ab=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+    let txt='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const pg=await pdf.getPage(i);
+      const ct=await pg.getTextContent();
+      txt+=ct.items.map(it=>it.str).join(' ')+'\n';
+    }
+    extractedTexts[slot]=txt.trim();
+    const words=extractedTexts[slot].split(/\s+/).filter(Boolean).length;
+    ex.classList.add('hidden');ld.classList.remove('hidden');
+    fn.textContent=file.name;
+    wc.textContent=words.toLocaleString()+' words extracted';
+  }catch(e){
+    ex.classList.add('hidden');dz.classList.remove('hidden');
+    alert('Could not read PDF: '+e.message);
+  }
+}
+
+function removePdf(slot){
+  extractedTexts[slot]='';
+  const ids={main:['drop-zone','pdf-extracting','pdf-loaded'],a:['drop-zone-a','pdf-extracting-a','pdf-loaded-a'],b:['drop-zone-b','pdf-extracting-b','pdf-loaded-b']};
+  ids[slot].forEach((id,i)=>{const el=document.getElementById(id);if(i===0)el.classList.remove('hidden');else el.classList.add('hidden')});
+}
+
+function loadExample(type){
+  switchInputTab('text');
+  document.getElementById('judgment-text').value=EXAMPLES[type];
+  updateWordCount();
+}
+
+function updateWordCount(){
+  const text=document.getElementById('judgment-text').value.trim();
+  const count=text?text.split(/\s+/).filter(Boolean).length:0;
+  const el=document.getElementById('word-count');
+  el.textContent=count.toLocaleString()+' words';
+  el.className='word-count '+(count>=500?'good':count>=200?'warn':'');
+}
+
+function clearMain(){
+  document.getElementById('judgment-text').value='';
+  document.getElementById('meta-name').value='';
+  document.getElementById('meta-year').value='';
+  document.getElementById('meta-type').value='';
+  updateWordCount();
+  removePdf('main');
+  setMainState('empty');
+}
+
+function setMainState(state){
+  document.getElementById('main-empty').classList.toggle('hidden',state!=='empty');
+  document.getElementById('main-loading').classList.toggle('hidden',state!=='loading');
+  document.getElementById('main-error').classList.toggle('hidden',state!=='error');
+  document.getElementById('main-results').classList.toggle('hidden',state!=='results');
+}
+
+function buildPrompt(text){
+  const words=text.split(/\s+/);
+  const truncated=words.length>8000?words.slice(0,8000).join(' ')+'\n\n[Truncated to 8,000 words]':text;
+  return `You are an expert legal researcher specialising in feminist jurisprudence and gender bias in judicial language. Produce a rigorous, evidence-based analysis.
+
+Every finding MUST: (1) quote EXACT verbatim words from the text, (2) explain WHY this evidences gender bias, (3) compare to contrasting treatment of the other gender where possible.
+
+Analyse these eight dimensions:
+1. NAMING ASYMMETRY: Are male/female parties named differently? Women by Mrs/Miss/pronoun where men get full name/title?
+2. AGENCY AND PASSIVITY: Male subjects perform actions ("he argued","he built") while female subjects have things done to them ("she was dismissed","she was found")?
+3. CREDIBILITY LANGUAGE: Whose evidence is "preferred","accepted","reliable"? Whose is "inconsistent","exaggerated"? Quote exact phrases for each gender.
+4. EMOTIONAL/RELATIONAL DESCRIPTORS: Women described through emotional states ("upset","distressed") or relational roles ("mother","wife") where men get professional descriptors?
+5. BIOGRAPHICAL DETAIL ASYMMETRY: More professional/career detail given for male than female parties? Quote specific passages.
+6. TITLE AND HONORIFIC PATTERNS: How are Mr/Mrs/Ms/Miss used? Is marital status signalled for women but not men?
+7. JUDICIAL VOICE: Any moments where the judicial voice itself uses gendered assumptions?
+8. OVERALL BALANCE: Are biases structural/systemic or incidental?
+
+Return ONLY valid JSON, no preamble:
+{
+  "bias_score": <0-100: 0=heavily male-biased, 50=balanced, 100=heavily female-biased. Do NOT default to 40-50. Clear naming asymmetry or agency patterns = 20-35. Be precise.>,
+  "score_label": <"Strongly male-biased"|"Moderately male-biased"|"Slightly male-biased"|"Broadly balanced"|"Slightly female-biased"|"Moderately female-biased"|"Strongly female-biased">,
+  "score_summary": <2-3 sentences with at least one direct quote from the text>,
+  "male_references": <count he/him/his/Mr + male names>,
+  "female_references": <count she/her/hers/Mrs/Miss/Ms + female names>,
+  "neutral_references": <count claimant/respondent/appellant/party/witness>,
+  "findings": [
+    {
+      "type": <"naming"|"agency"|"credibility"|"emotional"|"biographical"|"titles"|"pattern">,
+      "headline": <6-8 word summary>,
+      "quote": <exact verbatim text from judgment>,
+      "analysis": <2-3 sentences: why this evidences bias, what it reveals about how the court constructs gender, contrasting treatment of other gender>
+    }
+  ]
+}
+Minimum 6 findings. If a dimension has no bias, state that explicitly.
+
+Text:
+${truncated}`;
+}
+
+async function callAPI(prompt){
+  const response=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:[{role:'user',content:prompt}]})
+  });
+  if(!response.ok){const err=await response.json();throw new Error(err.error?.message||'API error '+response.status)}
+  const data=await response.json();
+  const raw=data.content[0].text.trim();
+  const match=raw.match(/\{[\s\S]*\}/);
+  if(!match)throw new Error('Could not parse response');
+  return JSON.parse(match[0]);
+}
+
+async function runAnalysis(slot){
+  const text=slot==='main'?(extractedTexts.main||document.getElementById('judgment-text').value.trim()):null;
+  if(slot==='main'&&!text){alert('Please upload a PDF or paste text first.');return}
+  if(!apiKey){document.getElementById('api-key-section').style.display='block';document.getElementById('api-key-section').scrollIntoView({behavior:'smooth'});return}
+
+  setMainState('loading');
+  document.getElementById('analyse-btn').disabled=true;
+
+  try{
+    const result=await callAPI(buildPrompt(text));
+    lastResult=result;
+    const meta={name:document.getElementById('meta-name').value.trim(),year:document.getElementById('meta-year').value,type:document.getElementById('meta-type').value};
+    document.getElementById('main-results-inner').innerHTML=renderResultHTML(result,meta,true);
+    setMainState('results');
+    attachCharts('main',result);
+  }catch(e){
+    document.getElementById('main-error').textContent='Analysis failed: '+e.message;
+    setMainState('error');
+  }
+  document.getElementById('analyse-btn').disabled=false;
+}
+
+async function runComparison(){
+  const textA=extractedTexts.a||document.getElementById('cmp-text-a').value.trim();
+  const textB=extractedTexts.b||document.getElementById('cmp-text-b').value.trim();
+  if(!textA||!textB){alert('Please provide text for both judgments.');return}
+  if(!apiKey){alert('Please enter your API key on the Analyse page first.');return}
+
+  const btn=document.getElementById('compare-btn');
+  const status=document.getElementById('compare-status');
+  btn.disabled=true;
+  status.textContent='Analysing judgment A…';
+  document.getElementById('cmp-result-a').innerHTML='<div class="loading" style="padding:2rem"><div class="loading-dots"><span></span><span></span><span></span></div><p>Analysing…</p></div>';
+  document.getElementById('cmp-result-b').innerHTML='<div class="loading" style="padding:2rem"><div class="loading-dots"><span></span><span></span><span></span></div><p>Analysing…</p></div>';
+
+  try{
+    const metaA={name:document.getElementById('cmp-name-a').value,year:document.getElementById('cmp-year-a').value,type:''};
+    const metaB={name:document.getElementById('cmp-name-b').value,year:document.getElementById('cmp-year-b').value,type:''};
+    const [rA,rB]=await Promise.all([callAPI(buildPrompt(textA)),callAPI(buildPrompt(textB))]);
+    status.textContent='Done';
+    document.getElementById('cmp-result-a').innerHTML=renderResultHTML(rA,metaA,false);
+    document.getElementById('cmp-result-b').innerHTML=renderResultHTML(rB,metaB,false);
+    attachCharts('a',rA);
+    attachCharts('b',rB);
+    renderComparisonSummary(rA,metaA,rB,metaB);
+  }catch(e){
+    status.textContent='Error: '+e.message;
+  }
+  btn.disabled=false;
+}
+
+function renderResultHTML(r,meta,showSave){
+  const score=Math.round(r.bias_score);
+  const scoreColor=score>=40&&score<=60?'#2a6b2a':score>60?'#2a4a6b':'#8b3a3a';
+  const male=r.male_references||0,female=r.female_references||0,neutral=r.neutral_references||0;
+  const total=male+female+neutral||1;
+  const cid='c'+Date.now()+Math.random().toString(36).slice(2,6);
+
+  const findingsHTML=(r.findings||[]).map(f=>{
+    const tagClass={naming:'tag-naming',agency:'tag-agency',credibility:'tag-credibility',emotional:'tag-emotional',biographical:'tag-biographical',titles:'tag-titles',pattern:'tag-pattern',masculine:'tag-masculine',feminine:'tag-feminine',neutral:'tag-neutral'}[f.type]||'tag-pattern';
+    return `<div class="finding-item">
+      <div style="display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.4rem">
+        <span class="finding-tag ${tagClass}">${f.type}</span>
+        <span class="finding-headline">${f.headline||''}</span>
+      </div>
+      ${f.quote?`<div class="finding-quote">"${f.quote}"</div>`:''}
+      <p class="finding-text">${f.analysis||f.text||''}</p>
+    </div>`;
+  }).join('');
+
+  const highlightedHTML=buildHighlightedText(r);
+
+  const saveBtn=showSave?`<div class="save-notice">
+    <span style="font-size:13px;color:var(--ink-soft)">Save this analysis to your research log?</span>
+    <button class="btn-save-log" onclick="saveToLog()">Save to log</button>
+  </div>`:'';
+
+  return `
+    ${meta.name?`<div style="font-size:12px;color:var(--ink-muted);margin-bottom:1rem">${meta.name}${meta.year?' · '+meta.year:''}${meta.type?' · '+meta.type:''}</div>`:''}
+    <div class="score-section">
+      <div class="score-circle">
+        <svg width="84" height="84" viewBox="0 0 84 84">
+          <circle cx="42" cy="42" r="35" fill="none" stroke="#e8e4dc" stroke-width="6"/>
+          <circle cx="42" cy="42" r="35" fill="none" stroke="${scoreColor}" stroke-width="6"
+            stroke-dasharray="219.9" stroke-dashoffset="${219.9-(score/100)*219.9}"
+            stroke-linecap="round" id="arc-${cid}"/>
+        </svg>
+        <div class="score-number"><span style="color:${scoreColor}">${score}</span><small>score</small></div>
+      </div>
+      <div class="score-meta">
+        <h3>${r.score_label}</h3>
+        <p>${r.score_summary}</p>
+      </div>
+    </div>
+    <div class="metrics-grid">
+      <div class="metric-card male"><div class="metric-label">Male references</div><div class="metric-value">${male}</div><div class="metric-sub">${Math.round(male/total*100)}% of references</div></div>
+      <div class="metric-card female"><div class="metric-label">Female references</div><div class="metric-value">${female}</div><div class="metric-sub">${Math.round(female/total*100)}% of references</div></div>
+      <div class="metric-card neutral"><div class="metric-label">Neutral references</div><div class="metric-value">${neutral}</div><div class="metric-sub">gender-neutral terms</div></div>
+      <div class="metric-card patterns"><div class="metric-label">Flagged patterns</div><div class="metric-value">${(r.findings||[]).filter(f=>f.type==='pattern').length}</div><div class="metric-sub">language patterns</div></div>
+    </div>
+    <div class="chart-wrap" style="margin:1rem 0"><canvas id="chart-${cid}"></canvas></div>
+    <div class="result-tabs">
+      <button class="result-tab active" onclick="switchResultTab(this,'findings-${cid}')">Findings</button>
+      <button class="result-tab" onclick="switchResultTab(this,'highlight-${cid}')">Highlighted text</button>
+    </div>
+    <div class="result-pane active" id="findings-${cid}">${findingsHTML}</div>
+    <div class="result-pane" id="highlight-${cid}">
+      <div class="highlight-legend">
+        <span class="hl-key"><span class="hl-swatch" style="background:#d4e3f0"></span>Male reference</span>
+        <span class="hl-key"><span class="hl-swatch" style="background:#f0dede"></span>Female reference</span>
+        <span class="hl-key"><span class="hl-swatch" style="background:#faf3e0"></span>Flagged pattern</span>
+      </div>
+      <div class="highlight-wrap">${highlightedHTML}</div>
+    </div>
+    ${saveBtn}
+    <div style="height:1rem"></div>
+    <script>
+      (function(){
+        const ctx=document.getElementById('chart-${cid}').getContext('2d');
+        new Chart(ctx,{type:'bar',data:{labels:['Male','Female','Neutral'],datasets:[{data:[${male},${female},${neutral}],backgroundColor:['#d4e3f0','#f0dede','#f5f0e0'],borderColor:['#2a4a6b','#8b3a3a','#b8860b'],borderWidth:1.5,borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f0ece4'},ticks:{font:{family:'DM Sans',size:11},color:'#8a8a84'}},x:{grid:{display:false},ticks:{font:{family:'DM Sans',size:11},color:'#4a4a46'}}}}});
+      })();
+    <\/script>`;
+}
+
+function switchResultTab(btn,paneId){
+  const container=btn.closest('.results-panel')||btn.closest('.compare-result')||btn.closest('#main-results-inner');
+  if(!container)return;
+  container.querySelectorAll('.result-tab').forEach(b=>b.classList.remove('active'));
+  container.querySelectorAll('.result-pane').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(paneId).classList.add('active');
+}
+
+function buildHighlightedText(r){
+  const text=extractedTexts.main||document.getElementById('judgment-text').value.trim();
+  if(!text)return '<em style="color:var(--ink-muted)">Text not available for highlighting.</em>';
+
+  const malePatterns=[/\bhe\b/gi,/\bhim\b/gi,/\bhis\b/gi,/\bMr\b/g];
+  const femalePatterns=[/\bshe\b/gi,/\bher\b/gi,/\bhers\b/gi,/\bMrs\b/g,/\bMiss\b/g,/\bMs\b/g];
+
+  let escaped=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  malePatterns.forEach(p=>{ escaped=escaped.replace(p,m=>`<mark class="hl-male">${m}</mark>`); });
+  femalePatterns.forEach(p=>{ escaped=escaped.replace(p,m=>`<mark class="hl-female">${m}</mark>`); });
+
+  if(r.findings){
+    r.findings.forEach(f=>{
+      if(f.quote&&f.quote.length>10&&f.quote.length<200){
+        const safe=f.quote.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        try{escaped=escaped.replace(new RegExp(safe,'i'),m=>`<mark class="hl-pattern">${m}</mark>`);}catch(e){}
+      }
+    });
+  }
+  return escaped;
+}
+
+function attachCharts(slot,r){}
+
+function renderComparisonSummary(rA,metaA,rB,metaB){
+  const diff=Math.round(rB.bias_score)-Math.round(rA.bias_score);
+  const direction=diff>0?'more balanced':'less balanced';
+  const msg=`${metaB.name||'Judgment B'} (${metaB.year||'later'}) scores ${Math.abs(diff)} points ${direction} than ${metaA.name||'Judgment A'} (${metaA.year||'earlier'}).`;
+  document.getElementById('compare-status').textContent=msg;
+}
+
+function saveToLog(){
+  if(!lastResult)return;
+  const entry={
+    id:Date.now(),
+    name:document.getElementById('meta-name').value.trim()||'Unnamed case',
+    year:document.getElementById('meta-year').value||'—',
+    type:document.getElementById('meta-type').value||'—',
+    score:Math.round(lastResult.bias_score),
+    label:lastResult.score_label,
+    summary:lastResult.score_summary,
+    male:lastResult.male_references||0,
+    female:lastResult.female_references||0,
+    neutral:lastResult.neutral_references||0,
+    topFinding:lastResult.findings&&lastResult.findings[0]?lastResult.findings[0].headline:''
+  };
+  researchLog.push(entry);
+  researchLog.sort((a,b)=>parseInt(a.year)-parseInt(b.year));
+  localStorage.setItem('judiciallens-log',JSON.stringify(researchLog));
+  alert('Saved to research log.');
+}
+
+function renderLog(){
+  const container=document.getElementById('log-content');
+  if(researchLog.length===0){
+    container.innerHTML='<div class="log-empty"><p style="font-size:14px">No cases analysed yet.<br>Analyse a judgment and click "Save to log".</p></div>';
+    renderTimeline();
+    return;
+  }
+  container.innerHTML=`<table class="log-table">
+    <thead><tr>
+      <th>Case name</th><th>Year</th><th>Type</th><th>Score</th><th>Label</th><th>Key finding</th><th></th>
+    </tr></thead>
+    <tbody>${researchLog.map(e=>{
+      const cls=e.score<=35?'score-high':e.score<=55?'score-mid':'score-low';
+      return `<tr>
+        <td style="font-weight:500">${e.name}</td>
+        <td>${e.year}</td>
+        <td style="color:var(--ink-muted)">${e.type}</td>
+        <td><span class="score-pill ${cls}">${e.score}</span></td>
+        <td style="font-size:12px;color:var(--ink-soft)">${e.label}</td>
+        <td style="font-size:12px;color:var(--ink-soft);max-width:200px">${e.topFinding}</td>
+        <td><button class="btn-delete" onclick="deleteLog(${e.id})">✕</button></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+  renderTimeline();
+}
+
+function deleteLog(id){
+  researchLog=researchLog.filter(e=>e.id!==id);
+  localStorage.setItem('judiciallens-log',JSON.stringify(researchLog));
+  renderLog();
+}
+
+function renderTimeline(){
+  if(chartInstances.timeline)chartInstances.timeline.destroy();
+  const canvas=document.getElementById('timeline-chart');
+  if(researchLog.length<2){
+    canvas.parentElement.innerHTML='<p style="color:var(--ink-muted);font-size:13px;padding:2rem;text-align:center">Add at least 2 cases to see the timeline.</p>';
+    return;
+  }
+  const sorted=[...researchLog].sort((a,b)=>parseInt(a.year)-parseInt(b.year));
+  chartInstances.timeline=new Chart(canvas.getContext('2d'),{
+    type:'line',
+    data:{
+      labels:sorted.map(e=>e.year+(e.name?' — '+e.name.slice(0,20)+(e.name.length>20?'…':''):'')),
+      datasets:[{
+        label:'Bias score',
+        data:sorted.map(e=>e.score),
+        borderColor:'#8b3a3a',
+        backgroundColor:'rgba(139,58,58,0.08)',
+        borderWidth:2,
+        pointBackgroundColor:sorted.map(e=>e.score<=35?'#8b3a3a':e.score<=55?'#b8860b':'#2a6b2a'),
+        pointRadius:6,
+        tension:0.3,
+        fill:true
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`Score: ${ctx.raw} — ${sorted[ctx.dataIndex].label}`}}},
+      scales:{
+        y:{min:0,max:100,grid:{color:'#f0ece4'},ticks:{font:{family:'DM Sans',size:11},color:'#8a8a84'},title:{display:true,text:'Bias score (0=male-biased, 50=balanced, 100=female-biased)',font:{family:'DM Sans',size:11},color:'#8a8a84'}},
+        x:{grid:{display:false},ticks:{font:{family:'DM Sans',size:10},color:'#4a4a46',maxRotation:30}}
+      }
+    }
+  });
+}
+
+document.getElementById('judgment-text').addEventListener('input',updateWordCount);
+document.getElementById('api-key-input').addEventListener('keydown',e=>{if(e.key==='Enter')saveKey()});
+
+['main','a','b'].forEach(slot=>{
+  const dz=document.getElementById('drop-zone'+(slot==='main'?'':'-'+slot));
+  if(!dz)return;
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over')});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+  dz.addEventListener('drop',e=>{
+    e.preventDefault();dz.classList.remove('drag-over');
+    const file=e.dataTransfer.files[0];
+    if(file&&file.type==='application/pdf')handlePdfUpload({target:{files:[file]}},slot);
+  });
+});
+</script>
+</body>
+</html>
